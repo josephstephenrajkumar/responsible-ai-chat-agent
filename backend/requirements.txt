@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+pydantic
+SQLAlchemy
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-sqlalchemy
+opentelemetry-exporter-jaeger-thrift
+langfuse
