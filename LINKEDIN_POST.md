@@ -31,7 +31,7 @@ This project evaluates LLM responses across **eight governance pillars**:
 7. **Governance** — Enforce organizational policies and controls
 8. **Controllability** — Enable fine-grained control over model behavior
 
-Each pillar is evaluated in **code mode** (local policy checks) and **framework mode** (integrated third-party frameworks like Presidio, Guardrails, TruLens, and Ragas).
+Each pillar is evaluated in **code mode** (local policy checks) and **framework mode**. Framework mode now includes Microsoft Presidio for privacy redaction, Guardrails AI for safety blocking, Langfuse for LLM observability, and OpenTelemetry/Jaeger for trace visibility. TruLens and Ragas-style hooks remain intentionally isolated placeholders for future expansion.
 
 ---
 
@@ -52,6 +52,11 @@ Each pillar is evaluated in **code mode** (local policy checks) and **framework 
 - Audit logging for compliance and forensics
 - Jaeger tracing for end-to-end visibility
 - Langfuse integration for LLM observability
+
+**Framework Guardrails**
+- Microsoft Presidio detects and redacts PII before prompts reach the model
+- Guardrails AI blocks unsafe framework-mode requests before LLM invocation
+- Local starter safety policies cover fraud/phishing, AML evasion, cyber abuse, violence/harm, and unsafe financial actions
 
 **LLM Integration** — Groq-Compatible
 - Flexible provider abstraction for Groq, OpenAI, or other endpoints
@@ -85,7 +90,7 @@ Everything you need to understand, deploy, and extend this project is included:
 ✅ **Governance Gap** — No built-in policy enforcement → SQLAlchemy audit logging
 ✅ **Audit Blind Spot** — How was this decision made? → Request-level tracing with Jaeger + Langfuse framework-mode LLM observability
 ✅ **LLM Call Opacity** — Where's the trace for my model generation? → Langfuse `@observe` decorators for fine-grained visibility
-✅ **Framework Fragmentation** — Which tool for which pillar? → Unified evaluation interface (Presidio, Guardrails, TruLens, Ragas)
+✅ **Framework Fragmentation** — Which tool for which pillar? → Unified evaluation interface with implemented Presidio + Guardrails AI foundations and extension hooks for TruLens/Ragas
 ✅ **Compliance Friction** — Where's the proof? → Searchable audit events, trace UI, and generation logs
 ✅ **Experimentation Barrier** → One docker compose command to run everything locally
 
@@ -96,7 +101,8 @@ Everything you need to understand, deploy, and extend this project is included:
 This project is **intentionally modular** so your team can:
 
 - Adopt individual pillars (start with privacy & safety, expand to fairness & explainability)
-- Swap framework backends (replace placeholders with Presidio, Guardrails, etc.)
+- Move local starter policies into your approved, versioned governance metadata
+- Swap or extend framework backends as your controls mature
 - Extend to your LLM provider (Groq, OpenAI, Claude, local models, etc.)
 - Integrate with your data warehouse (PostgreSQL, DynamoDB, Snowflake)
 - Scale with Kubernetes (Docker Compose → Helm charts)
@@ -113,7 +119,7 @@ This project is **intentionally modular** so your team can:
 In upcoming posts, I'll explore **two critical pillars** in depth:
 
 🔐 **Privacy Pillar Post** — PII detection, data masking, and GDPR compliance strategies with Presidio
-🛡️ **Safety Pillar Post** — Content moderation, toxicity detection, and guardrails implementation
+🛡️ **Safety Pillar Post** — Guardrails AI validation, policy blocking, and why production policies should live in versioned metadata rather than hardcoded rules
 
 Stay tuned for code examples and real-world scenarios.
 

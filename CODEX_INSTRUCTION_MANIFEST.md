@@ -13,7 +13,7 @@ Build a full-stack AI application that:
 - returns the model answer plus Responsible AI metadata
 - persists governance policy and audit events in a database
 - exposes observability through OpenTelemetry and Jaeger
-- supports framework integrations such as Langfuse, Presidio, Guardrails, TruLens, and Ragas
+- supports framework integrations such as Langfuse, Presidio, Guardrails AI, and extension hooks for evaluators such as TruLens and Ragas
 
 Default implementation for this repo:
 
@@ -300,4 +300,7 @@ This repository currently implements:
 - `/observability` endpoint
 - Docker Compose Jaeger service
 - Langfuse decorators for framework-mode Groq calls
+- Presidio framework-mode privacy redaction with regex fallback
+- Guardrails AI framework-mode safety validation and policy blocking
+- local starter Guardrails safety policy rules that should move to versioned metadata before production use
 - frontend observability badge wired to `/observability`

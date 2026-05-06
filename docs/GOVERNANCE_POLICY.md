@@ -64,4 +64,24 @@ Every response includes assessments for:
 - governance
 - controllability
 
-Framework mode should progressively replace placeholders with real framework engines such as Presidio, Guardrails, TruLens, and Ragas.
+Current framework status:
+
+- Presidio is implemented for privacy detection/redaction with regex fallback.
+- Guardrails AI is implemented for safety validation and policy blocking.
+- TruLens and Ragas remain lightweight placeholder hooks.
+
+## Safety Policy Source
+
+The current Guardrails AI safety rules are local starter rules embedded in application code. They cover categories such as phishing/fraud, AML evasion, cyber abuse, violence/harm, and unsafe financial actions.
+
+These rules are not automatically updated from Guardrails Hub, BIS/BCBS, MAS, or any online regulator source. Production governance should move safety rules into approved versioned metadata or database-backed policy configuration.
+
+Recommended production flow:
+
+```text
+external standards and validator catalogs
+  -> risk/compliance review
+  -> approved policy version
+  -> runtime Guardrails configuration
+  -> audit log with policy version and decision
+```

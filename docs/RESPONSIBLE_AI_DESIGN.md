@@ -131,12 +131,14 @@ Responsible AI pillars:
 `framework` mode uses framework-style modules:
 
 - `langfuse_observability.py`
-- `presidio_privacy.py`
-- `guardrails_safety.py`
-- `trulens_eval.py`
-- `ragas_eval.py`
+- `presidio_privacy.py`: implemented Microsoft Presidio privacy detection/redaction with regex fallback.
+- `guardrails_safety.py`: implemented Guardrails AI safety validation with a local custom validator.
+- `trulens_eval.py`: lightweight placeholder for explainability evaluation.
+- `ragas_eval.py`: lightweight placeholder for fairness/verifiability-style evaluation.
 
-Some framework-mode modules are currently lightweight placeholders and are intentionally isolated so real Presidio, Guardrails, TruLens, and Ragas calls can replace them later.
+Presidio and Guardrails AI are active framework-mode integrations. TruLens and Ragas remain intentionally isolated placeholders so real evaluators can replace them later.
+
+Framework-mode Guardrails safety rules are currently starter policy rules embedded in Python. They should become versioned policy metadata or database-backed policy configuration before production use.
 
 ### 3.5 Persistence
 
@@ -235,13 +237,21 @@ Pydantic validates ChatRequest
     v
 OpenTelemetry parent span: /chat
     |
-    |-- groq_api_call
+    |-- privacy_input_check, framework mode only
+    |     `-- Presidio or regex fallback redacts sensitive input
+    |
+    |-- safety_input_check, framework mode only
+    |     `-- Guardrails AI can block unsafe prompts before model invocation
+    |
+    |-- groq_api_call, skipped when framework safety blocks input
     |     |-- GroqClient.send_prompt()
     |     |-- optional Langfuse @observe in framework mode
     |     `-- HTTPX POST to Groq /chat/completions
     |
-    |-- privacy_check
-    |-- safety_check
+    |-- privacy_output_check, framework mode only
+    |-- safety_output_check, framework mode only
+    |-- privacy_check, code mode only
+    |-- safety_check, code mode only
     |-- fairness_check
     |-- explainability_check
     |-- verifiability_check
@@ -264,10 +274,14 @@ Expected Jaeger trace tree for `/chat`:
 
 ```text
 /chat
+  privacy_input_check, framework mode
+  safety_input_check, framework mode
   groq_api_call
     POST
-  privacy_check
-  safety_check
+  privacy_output_check, framework mode
+  safety_output_check, framework mode
+  privacy_check, code mode
+  safety_check, code mode
   fairness_check
   explainability_check
   verifiability_check
@@ -547,9 +561,13 @@ Primary request trace:
 
 ```text
 /chat
+  privacy_input_check, framework mode
+  safety_input_check, framework mode
   groq_api_call
-  privacy_check
-  safety_check
+  privacy_output_check, framework mode
+  safety_output_check, framework mode
+  privacy_check, code mode
+  safety_check, code mode
   fairness_check
   explainability_check
   verifiability_check
@@ -703,7 +721,8 @@ sqlite3 backend/app/storage/responsible_ai.db \
 
 ## 12. Known Limitations
 
-- Framework-mode Presidio, Guardrails, TruLens, and Ragas modules are currently lightweight stand-ins.
+- Guardrails AI safety rules are currently starter policy rules embedded in Python instead of versioned policy metadata.
+- TruLens and Ragas framework-mode modules are currently lightweight stand-ins.
 - SQLite is not recommended for multi-instance production deployment.
 - No authentication is implemented yet.
 - No Alembic migration history is configured yet.
@@ -711,7 +730,8 @@ sqlite3 backend/app/storage/responsible_ai.db \
 
 ## 13. Future Enhancements
 
-- Replace framework placeholders with real Presidio, Guardrails, TruLens, and Ragas integrations.
+- Move Guardrails AI policy rules into versioned metadata or database-backed policy configuration.
+- Replace remaining TruLens and Ragas placeholders with real framework integrations.
 - Add Postgres and Alembic.
 - Add authentication and role-based access.
 - Add audit retention job.

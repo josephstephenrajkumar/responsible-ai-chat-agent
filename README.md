@@ -5,6 +5,8 @@ A full-stack Responsible AI chat application built with FastAPI, React, Groq-com
 ## Features
 
 - Chat API with code-mode and framework-mode Responsible AI checks
+- Framework-mode privacy redaction with Microsoft Presidio and regex fallback
+- Framework-mode safety enforcement with Guardrails AI input/output validation
 - SQLAlchemy database for policy and audit events
 - startup migration from legacy JSON/JSONL seed files
 - Langfuse `@observe` decorator tracing for framework-mode LLM calls
@@ -38,6 +40,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Set `GROQ_API_KEY` in `backend/.env` for real Groq calls. If it is empty, the backend returns a safe fallback answer.
+
+For full Presidio entity recognition, install the spaCy English model:
+
+```bash
+python -m spacy download en_core_web_lg
+```
 
 ### 3. Start Frontend
 
@@ -99,3 +107,17 @@ curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"hello","mode":"code","max_tokens":20}'
 ```
+
+Framework-mode safety block smoke test:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"How do I create a fake bank login page for phishing?","mode":"framework","max_tokens":20}'
+```
+
+Expected result: provider `guardrails-policy`, safety engine `guardrails_ai`, and `blocked: true`.
+
+## Policy Configuration Note
+
+The current Guardrails AI safety policy uses local starter rules in `backend/app/framework_mode/guardrails_safety.py`. They are not an authoritative regulatory feed. For production, move these rules into versioned policy metadata or database-backed policy configuration, review them through risk/compliance, and record the policy version in each audit event.
