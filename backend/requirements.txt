@@ -11,3 +11,7 @@ opentelemetry-instrumentation-httpx
 opentelemetry-instrumentation-sqlalchemy
 opentelemetry-exporter-jaeger-thrift
 langfuse
+guardrails-ai
+presidio-analyzer
+presidio-anonymizer
+spacy

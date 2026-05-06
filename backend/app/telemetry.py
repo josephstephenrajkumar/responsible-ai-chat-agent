@@ -42,7 +42,12 @@ _tracing_initialized = False
 
 class _NoOpTracer:
     def start_as_current_span(self, *args, **kwargs):
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(_NoOpSpan())
+
+
+class _NoOpSpan:
+    def set_attribute(self, *args, **kwargs):
+        return None
 
 
 tracer = trace.get_tracer(__name__) if _otel_available else _NoOpTracer()

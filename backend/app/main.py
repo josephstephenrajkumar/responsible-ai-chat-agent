@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,27 +81,83 @@ def chat(request: ChatRequest):
         span.set_attribute('chat.temperature', request.temperature)
         span.set_attribute('chat.max_tokens', request.max_tokens)
 
-        with tracer.start_as_current_span('groq_api_call') as groq_span:
-            response = groq_client.send_prompt(
-                request.message,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                explain=request.explain,
-                verify=request.verify,
-                mode=request.mode.value
-            )
-            groq_span.set_attribute('llm.provider', response.get('provider', 'unknown'))
-            groq_span.set_attribute('llm.model', response.get('model', request.model))
-            groq_span.set_attribute('llm.request_id', response.get('request_id', ''))
+        llm_message = request.message
+        privacy_result = None
+        safety_result = None
+        response = None
+        if request.mode == 'framework':
+            with tracer.start_as_current_span('privacy_input_check'):
+                privacy_result = framework_privacy(request.message)
+                llm_message = privacy_result.get('redacted_text') or request.message
+                span.set_attribute('privacy.input_redacted', privacy_result.get('redacted', False))
+                span.set_attribute('privacy.input_findings_count', privacy_result.get('findings_count', 0))
+
+            with tracer.start_as_current_span('safety_input_check') as safety_span:
+                safety_result = framework_safety(llm_message, stage='input')
+                safety_span.set_attribute('safety.input_blocked', safety_result.get('blocked', False))
+                safety_span.set_attribute('safety.input_risk', safety_result.get('safety_risk', 'unknown'))
+                safety_span.set_attribute('safety.engine', safety_result.get('safety_engine', 'unknown'))
+
+            if safety_result.get('blocked'):
+                response = {
+                    'answer': (
+                        'I cannot help with that request because it appears to violate '
+                        'the application safety policy. Please reframe it toward a lawful, '
+                        'defensive, or educational banking use case.'
+                    ),
+                    'provider': 'guardrails-policy',
+                    'model': request.model,
+                    'request_id': str(uuid.uuid4()),
+                    'timestamp': datetime.utcnow().isoformat() + 'Z',
+                    'tokens': 0,
+                    'metadata': {'blocked_by': 'guardrails_ai_safety_policy'}
+                }
+
+        if response is None:
+            with tracer.start_as_current_span('groq_api_call') as groq_span:
+                response = groq_client.send_prompt(
+                    llm_message,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    explain=request.explain,
+                    verify=request.verify,
+                    mode=request.mode.value
+                )
+                groq_span.set_attribute('llm.provider', response.get('provider', 'unknown'))
+                groq_span.set_attribute('llm.model', response.get('model', request.model))
+                groq_span.set_attribute('llm.request_id', response.get('request_id', ''))
         answer = response.get('answer', '')
 
         if request.mode == 'framework':
+            with tracer.start_as_current_span('privacy_output_check') as output_privacy_span:
+                output_privacy_result = framework_privacy(answer)
+                if output_privacy_result.get('redacted'):
+                    answer = output_privacy_result.get('redacted_text', answer)
+                privacy_result.update({
+                    'output_privacy_risk': output_privacy_result.get('privacy_risk'),
+                    'output_detected_sensitive_terms': output_privacy_result.get('detected_sensitive_terms', []),
+                    'output_findings_count': output_privacy_result.get('findings_count', 0),
+                    'output_redacted': output_privacy_result.get('redacted', False)
+                })
+                output_privacy_span.set_attribute('privacy.output_redacted', output_privacy_result.get('redacted', False))
+                output_privacy_span.set_attribute('privacy.output_findings_count', output_privacy_result.get('findings_count', 0))
             with tracer.start_as_current_span('observability_check'):
-                observability_info = evaluate_observability(request.message)
-            with tracer.start_as_current_span('privacy_check'):
-                privacy_result = framework_privacy(request.message)
-            with tracer.start_as_current_span('safety_check'):
-                safety_result = framework_safety(request.message)
+                observability_info = evaluate_observability(llm_message)
+            with tracer.start_as_current_span('safety_output_check') as safety_output_span:
+                output_safety_result = framework_safety(answer, stage='output')
+                if output_safety_result.get('blocked') and response.get('provider') != 'guardrails-policy':
+                    answer = (
+                        'The generated response was blocked because it violated the '
+                        'application safety policy.'
+                    )
+                safety_result.update({
+                    'output_safety_risk': output_safety_result.get('safety_risk'),
+                    'output_violations': output_safety_result.get('violations', []),
+                    'output_policy_violations': output_safety_result.get('policy_violations', []),
+                    'output_blocked': output_safety_result.get('blocked', False)
+                })
+                safety_output_span.set_attribute('safety.output_blocked', output_safety_result.get('blocked', False))
+                safety_output_span.set_attribute('safety.output_risk', output_safety_result.get('safety_risk', 'unknown'))
             with tracer.start_as_current_span('fairness_check'):
                 fairness_result = framework_fairness(answer)
             with tracer.start_as_current_span('explainability_check'):
@@ -159,7 +216,8 @@ def chat(request: ChatRequest):
                 trace_llm_call(
                     response.get('request_id', ''),
                     {
-                        'message': request.message,
+                        'message': llm_message,
+                        'original_message_redacted': privacy_result.get('redacted', False),
                         'model': request.model,
                         'temperature': request.temperature,
                         'max_tokens': request.max_tokens,

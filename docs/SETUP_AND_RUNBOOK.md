@@ -142,6 +142,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Install the local spaCy model used by Microsoft Presidio
+python -m spacy download en_core_web_lg
+
 # Copy environment template
 cp .env.example .env
 
@@ -343,7 +346,34 @@ curl -X POST http://localhost:8000/chat \
   }'
 ```
 
-### 7. Verify Database
+### 7. Verify Presidio Privacy Redaction
+
+Framework mode runs Microsoft Presidio before calling the LLM. Sensitive input is detected and the redacted prompt is sent downstream.
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "My email is alex@example.com and my SSN is 123-45-6789.",
+    "mode": "framework",
+    "max_tokens": 50
+  }'
+```
+
+Expected privacy fields include:
+
+```json
+{
+  "privacy_engine": "presidio",
+  "privacy_risk": "high",
+  "detected_sensitive_terms": ["EMAIL_ADDRESS", "US_SSN"],
+  "redacted": true
+}
+```
+
+If the spaCy model is missing, the backend starts with a regex fallback and the response includes `privacy_engine: "regex_fallback"` plus a `setup_error`.
+
+### 8. Verify Database
 
 ```bash
 # Check if database file exists
@@ -353,7 +383,7 @@ ls -lh backend/app/storage/responsible_ai.db
 sqlite3 backend/app/storage/responsible_ai.db "SELECT * FROM audit_events ORDER BY created_at DESC LIMIT 5;"
 ```
 
-### 8. Check Jaeger Traces
+### 9. Check Jaeger Traces
 
 1. Open http://localhost:16686
 2. Select service: `responsible-ai-chat-agent`

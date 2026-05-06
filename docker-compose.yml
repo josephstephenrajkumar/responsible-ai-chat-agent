@@ -19,7 +19,7 @@ services:
       JAEGER_HOST: jaeger
       JAEGER_PORT: 6831
       JAEGER_UI_URL: http://localhost:16686
-    command: bash -lc "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: bash -lc "pip install -r requirements.txt && python -m spacy download en_core_web_lg && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - '8000:8000'
     depends_on:

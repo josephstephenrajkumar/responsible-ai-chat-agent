@@ -1,7 +1,9 @@
 backend/app/storage/*.db
 backend/app/storage/*.db-*
 backend/app/storage/audit_log.jsonl
+backend/app/storage/tldextract_cache/
 backend/app/**/__pycache__/
+backend/venv/
 frontend/dist/
 frontend/node_modules/
 jaeger/
