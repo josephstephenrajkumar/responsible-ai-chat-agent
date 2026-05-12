@@ -58,6 +58,7 @@ _FALLBACK_PATTERNS = [
     ('CREDIT_CARD', re.compile(r'\b(?:\d[ -]*?){13,19}\b')),
     ('IP_ADDRESS', re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')),
     ('API_KEY', re.compile(r'\b(?:api[_-]?key|secret|token|password)\s*[:=]\s*[^\s,;]+', re.IGNORECASE)),
+    ('PASSWORD_DISCLOSURE', re.compile(r'\b(?:my\s+)?password\s+(?:is|=|:)\s*[^\s,;]+', re.IGNORECASE)),
     ('SG_NRIC_FIN', re.compile(r'\b[STFGM]\d{7}[A-Z]\b', re.IGNORECASE)),
 ]
 
@@ -136,7 +137,7 @@ def _remove_contained_findings(findings):
 
 
 def _risk_for(findings):
-    if any(item['entity_type'] in {'CREDIT_CARD', 'US_SSN', 'US_PASSPORT', 'API_KEY'} for item in findings):
+    if any(item['entity_type'] in {'CREDIT_CARD', 'US_SSN', 'US_PASSPORT', 'API_KEY', 'PASSWORD_DISCLOSURE'} for item in findings):
         return 'high'
     if findings:
         return 'medium'
@@ -225,6 +226,7 @@ def _presidio_analyze_and_redact(message, analyzer, anonymizer):
             'CREDIT_CARD': OperatorConfig('replace', {'new_value': '<CREDIT_CARD>'}),
             'EMAIL_ADDRESS': OperatorConfig('replace', {'new_value': '<EMAIL_ADDRESS>'}),
             'PHONE_NUMBER': OperatorConfig('replace', {'new_value': '<PHONE_NUMBER>'}),
+            'PASSWORD_DISCLOSURE': OperatorConfig('replace', {'new_value': '<PASSWORD>'}),
             'SG_NRIC_FIN': OperatorConfig('replace', {'new_value': '<SG_NRIC_FIN>'}),
             'US_SSN': OperatorConfig('replace', {'new_value': '<US_SSN>'}),
         }

@@ -1,10 +1,11 @@
+import hashlib
 import json
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, create_engine, desc
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, desc, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from app.config import Settings
 from app.telemetry import tracer
@@ -41,6 +42,84 @@ class AuditEventRecord(Base):
     is_cached = Column(Boolean, nullable=False, default=False)
     summary = Column(Text, nullable=False, default='')
     responsible_ai = Column(Text, nullable=False, default='{}')
+
+
+class SafetyPolicy(Base):
+    __tablename__ = 'safety_policies'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(160), nullable=False)
+    category = Column(String(120), nullable=False, index=True)
+    severity = Column(String(40), nullable=False, default='medium')
+    description = Column(Text, nullable=False, default='')
+    policy_kind = Column(String(40), nullable=False, default='regex', index=True)
+    status = Column(String(40), nullable=False, default='draft', index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    version = Column(Integer, nullable=False, default=1)
+    source = Column(String(160), nullable=False, default='local')
+    approved_by = Column(String(120), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    activated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    patterns = relationship('SafetyPolicyPattern', back_populates='policy', cascade='all, delete-orphan')
+    hub_validators = relationship('SafetyPolicyHubValidator', back_populates='policy', cascade='all, delete-orphan')
+
+
+class SafetyPolicyPattern(Base):
+    __tablename__ = 'safety_policy_patterns'
+
+    id = Column(Integer, primary_key=True, index=True)
+    policy_id = Column(Integer, ForeignKey('safety_policies.id', ondelete='CASCADE'), nullable=False, index=True)
+    pattern = Column(Text, nullable=False)
+    label = Column(String(160), nullable=False, default='')
+    is_case_sensitive = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    policy = relationship('SafetyPolicy', back_populates='patterns')
+
+
+class SafetyPolicyHubValidator(Base):
+    __tablename__ = 'safety_policy_hub_validators'
+
+    id = Column(Integer, primary_key=True, index=True)
+    policy_id = Column(Integer, ForeignKey('safety_policies.id', ondelete='CASCADE'), nullable=False, index=True)
+    hub_uri = Column(String(240), nullable=False)
+    validator_class = Column(String(160), nullable=False)
+    install_local_models = Column(Boolean, nullable=False, default=False)
+    runtime_params = Column(Text, nullable=False, default='{}')
+    metadata_json = Column('metadata', Text, nullable=False, default='{}')
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    policy = relationship('SafetyPolicy', back_populates='hub_validators')
+
+
+class PolicyAuditEvent(Base):
+    __tablename__ = 'policy_audit_events'
+
+    id = Column(Integer, primary_key=True, index=True)
+    policy_id = Column(Integer, ForeignKey('safety_policies.id', ondelete='SET NULL'), nullable=True, index=True)
+    action = Column(String(80), nullable=False, index=True)
+    actor = Column(String(120), nullable=False, default='system')
+    event_hash = Column(String(64), nullable=False, index=True)
+    details = Column(Text, nullable=False, default='{}')
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
+class RuntimePolicyDecision(Base):
+    __tablename__ = 'runtime_policy_decisions'
+
+    id = Column(Integer, primary_key=True, index=True)
+    input_hash = Column(String(64), nullable=False, index=True)
+    stage = Column(String(40), nullable=False, default='input')
+    blocked = Column(Boolean, nullable=False, default=False)
+    risk_level = Column(String(40), nullable=False, default='low')
+    matched_categories = Column(Text, nullable=False, default='[]')
+    matched_patterns = Column(Text, nullable=False, default='[]')
+    policy_version = Column(String(120), nullable=False, default='none')
+    validator_engine = Column(String(120), nullable=False, default='regex_fallback')
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
 
 def default_policy() -> Dict[str, Any]:
@@ -105,6 +184,15 @@ def init_database() -> Dict[str, Any]:
 
     with tracer.start_as_current_span('db.init') as span:
         Base.metadata.create_all(bind=engine)
+        with engine.begin() as connection:
+            existing_policy_columns = {
+                row[1]
+                for row in connection.execute(text("PRAGMA table_info(safety_policies)")).fetchall()
+            }
+            if 'policy_kind' not in existing_policy_columns:
+                connection.execute(text(
+                    "ALTER TABLE safety_policies ADD COLUMN policy_kind VARCHAR(40) NOT NULL DEFAULT 'regex'"
+                ))
         migrated_audit_events = 0
 
         with SessionLocal() as session:
@@ -148,7 +236,7 @@ def get_policy_payload() -> Dict[str, Any]:
 
 
 def append_audit_event(event: Dict[str, Any]) -> None:
-    with tracer.start_as_current_span('db.audit.insert') as span:
+    with tracer.start_as_current_span('audit_insert') as span:
         with SessionLocal() as session:
             record = AuditEventRecord(
                 request_id=event['request_id'],
@@ -167,6 +255,10 @@ def append_audit_event(event: Dict[str, Any]) -> None:
                 session.rollback()
                 raise
         span.set_attribute('audit.request_id', event['request_id'])
+
+
+def hash_text(value: str) -> str:
+    return hashlib.sha256((value or '').encode('utf-8')).hexdigest()
 
 
 def get_recent_audit_events(limit: int = 25) -> List[Dict[str, Any]]:
@@ -193,4 +285,3 @@ def get_recent_audit_events(limit: int = 25) -> List[Dict[str, Any]]:
             }
             for record in records
         ]
-

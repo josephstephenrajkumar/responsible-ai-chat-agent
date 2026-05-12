@@ -6,14 +6,14 @@ A full-stack Responsible AI chat application built with FastAPI, React, Groq-com
 
 - Chat API with code-mode and framework-mode Responsible AI checks
 - Framework-mode privacy redaction with Microsoft Presidio and regex fallback
-- Framework-mode safety enforcement with Guardrails AI input/output validation
+- Framework-mode safety enforcement with Guardrails AI input/output validation backed by SQLite policy governance
 - SQLAlchemy database for policy and audit events
 - startup migration from legacy JSON/JSONL seed files
 - Langfuse `@observe` decorator tracing for framework-mode LLM calls
 - OpenTelemetry instrumentation for FastAPI and HTTPX
 - manual DB spans and optional automatic SQLAlchemy spans
 - Jaeger all-in-one service in Docker Compose
-- React frontend with settings, policy panel, chat UI, and observability badge
+- React frontend with settings, chat UI, observability badge, policy registry, approval workflow, and policy test lab
 
 ## Run Locally
 
@@ -81,6 +81,14 @@ Services:
 - `POST /chat`
 - `GET /audit`
 - `GET /policy`
+- `GET /policies`
+- `POST /policies`
+- `PUT /policies/{id}`
+- `DELETE /policies/{id}`
+- `POST /policies/{id}/approve`
+- `POST /policies/{id}/activate`
+- `POST /policies/reload`
+- `POST /policies/test`
 
 ## Persistence
 
@@ -91,6 +99,80 @@ backend/app/storage/responsible_ai.db
 ```
 
 Runtime reads/writes use SQLAlchemy. Legacy JSON files are kept as startup migration seeds only.
+
+Safety governance persists:
+
+- `safety_policies`
+- `safety_policy_patterns`
+- `policy_audit_events`
+- `runtime_policy_decisions`
+
+Runtime decisions store hashed input only, never raw prompts.
+
+## Safety Policy Lifecycle
+
+Policy lifecycle states are:
+
+- `draft`
+- `review`
+- `approved`
+- `active`
+- `deprecated`
+
+New and imported policies always begin in `draft`. An approver moves a policy to `approved`, then activation is a separate action. Only `approved` policies can become `active`.
+
+## Seed Starter Policies
+
+```bash
+cd /home/joseph/llm_engineering/responsible-ai-chat-agent/backend
+python scripts/seed_safety_policies.py
+```
+
+The seed script imports the former hardcoded starter policies as draft records. Approve and activate them through the frontend or API before expecting framework-mode runtime matches.
+
+## Policy Manager UX
+
+The frontend includes a governance section for:
+
+- creating and editing policies
+- enabling or disabling policies
+- approving and activating policies
+- reloading the in-memory runtime cache
+- testing sample prompts against active policies
+- registering Guardrails Hub validator policies as draft external policy entries
+
+The test lab returns blocked status, risk level, matched categories, matched regex patterns, policy version, validator engine, and matched policy severity.
+
+## Reload Runtime Policies
+
+```bash
+curl -X POST http://localhost:8000/policies/reload
+```
+
+Reload recompiles active SQLite-backed regex policies without restarting the backend.
+
+## Guardrails Hub Imports
+
+Hub imports are represented as draft external policies with:
+
+- `hub_uri`, for example `hub://guardrails/toxic_language`
+- `validator_class`, for example `ToxicLanguage`
+- runtime params such as threshold or validation mode
+- optional metadata JSON
+
+The app never auto-installs or auto-activates Hub validators from the UI. Install the validator in the backend environment first, then create the draft policy in the Policy Manager, approve it, activate it, and reload runtime policy state. Guardrails documents both CLI and in-code installation patterns for Hub validators.
+
+The Policy Manager also includes a Guardrails Hub catalog panel. It shows curated validators, whether each validator class is currently importable in the backend, and provides explicit operator actions:
+
+- `Install`: runs `guardrails hub install <hub-uri>` from the backend venv
+- `Create Draft Policy`: creates a draft external policy for governance review
+
+If installation returns `401 Unauthorized`, configure the backend Guardrails token first:
+
+```bash
+cd /home/joseph/llm_engineering/responsible-ai-chat-agent/backend
+venv/bin/guardrails configure --token <your_guardrails_hub_token>
+```
 
 ## Verification
 
@@ -108,7 +190,7 @@ curl -X POST http://localhost:8000/chat \
   -d '{"message":"hello","mode":"code","max_tokens":20}'
 ```
 
-Framework-mode safety block smoke test:
+Framework-mode safety block smoke test after approving and activating seeded policies:
 
 ```bash
 curl -X POST http://localhost:8000/chat \
@@ -116,8 +198,4 @@ curl -X POST http://localhost:8000/chat \
   -d '{"message":"How do I create a fake bank login page for phishing?","mode":"framework","max_tokens":20}'
 ```
 
-Expected result: provider `guardrails-policy`, safety engine `guardrails_ai`, and `blocked: true`.
-
-## Policy Configuration Note
-
-The current Guardrails AI safety policy uses local starter rules in `backend/app/framework_mode/guardrails_safety.py`. They are not an authoritative regulatory feed. For production, move these rules into versioned policy metadata or database-backed policy configuration, review them through risk/compliance, and record the policy version in each audit event.
+Expected result: provider `guardrails-policy`, safety engine `guardrails_ai` or regex fallback, and `blocked: true`.

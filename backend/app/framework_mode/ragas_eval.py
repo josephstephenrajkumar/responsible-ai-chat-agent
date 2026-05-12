@@ -1,7 +1,19 @@
+import re
+
+
+def _matched_terms(text, terms):
+    content = text or ''
+    return [
+        term
+        for term in terms
+        if re.search(rf'\b{re.escape(term)}\b', content, re.IGNORECASE)
+    ]
+
+
 def evaluate_fairness(answer):
     protected_terms = ['race', 'gender', 'religion', 'orientation', 'age']
     biased_terms = ['superior', 'inferior', 'better than', 'worse than', 'supremacy', 'inferiority']
-    message_flags = [term for term in protected_terms if term in (answer or '').lower()]
+    message_flags = _matched_terms(answer, protected_terms)
     response_flags = []
     risk_level = 'low'
 

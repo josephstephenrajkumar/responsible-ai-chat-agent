@@ -24,7 +24,7 @@ Framework mode currently includes:
 - Langfuse decorator tracing for LLM calls when Langfuse keys are configured.
 - Lightweight TruLens/RAGAS-style placeholders for explainability, verifiability, and fairness hooks.
 
-Guardrails AI safety rules are currently local starter policy rules in `app/framework_mode/guardrails_safety.py`. Treat them as prototype policy metadata embedded in code; production deployments should move them into approved, versioned configuration or database tables.
+Guardrails AI safety rules are now loaded from SQLite-backed policy governance tables and compiled into an in-memory runtime cache that can be reloaded without restarting the service.
 
 ## Run
 
@@ -51,6 +51,21 @@ At startup, the backend creates SQLAlchemy tables and migrates legacy seed data 
 - `app/storage/policy_config.json`
 - `app/storage/audit_log.jsonl`
 
+Safety governance tables:
+
+- `safety_policies`
+- `safety_policy_patterns`
+- `policy_audit_events`
+- `runtime_policy_decisions`
+
+To seed the old starter rules as draft policies:
+
+```bash
+python scripts/seed_safety_policies.py
+```
+
+Imported policies are never auto-activated. Approve and activate them through the policy APIs or frontend workflow.
+
 ## Jaeger
 
 Start Jaeger from the repo root:
@@ -72,6 +87,14 @@ http://localhost:16686
 - `POST /chat`
 - `GET /audit`
 - `GET /policy`
+- `GET /policies`
+- `POST /policies`
+- `PUT /policies/{id}`
+- `DELETE /policies/{id}`
+- `POST /policies/{id}/approve`
+- `POST /policies/{id}/activate`
+- `POST /policies/reload`
+- `POST /policies/test`
 
 ## Smoke Test
 

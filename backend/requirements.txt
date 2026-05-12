@@ -9,7 +9,7 @@ opentelemetry-sdk
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-httpx
 opentelemetry-instrumentation-sqlalchemy
-opentelemetry-exporter-jaeger-thrift
+opentelemetry-exporter-otlp-proto-http
 langfuse
 guardrails-ai
 presidio-analyzer

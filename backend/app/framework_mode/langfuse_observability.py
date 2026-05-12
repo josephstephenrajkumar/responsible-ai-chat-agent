@@ -16,12 +16,12 @@ _langfuse_configured = bool(
     and Settings.LANGFUSE_HOST
 )
 
-if _langfuse_available:
+if _langfuse_available and _langfuse_configured:
     langfuse_context.configure(
         public_key=Settings.LANGFUSE_PUBLIC_KEY or None,
         secret_key=Settings.LANGFUSE_SECRET_KEY or None,
         host=Settings.LANGFUSE_HOST or None,
-        enabled=_langfuse_configured
+        enabled=True
     )
 
 if _langfuse_available and _langfuse_configured:
@@ -35,7 +35,7 @@ else:
 
 
 def langfuse_observe(*args, **kwargs):
-    if observe:
+    if observe and _langfuse_configured:
         return observe(*args, **kwargs)
 
     def decorator(func):

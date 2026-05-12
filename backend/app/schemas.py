@@ -49,3 +49,63 @@ class AuditEvent(BaseModel):
 
 class PolicyResponse(BaseModel):
     policy: dict
+
+
+class SafetyPolicyPatternInput(BaseModel):
+    pattern: str = Field(..., min_length=1)
+    label: str = ''
+    is_case_sensitive: bool = False
+
+
+class SafetyHubValidatorInput(BaseModel):
+    hub_uri: str = Field(..., min_length=1)
+    validator_class: str = Field(..., min_length=1)
+    install_local_models: bool = False
+    runtime_params: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+
+
+class SafetyPolicyCreate(BaseModel):
+    name: str = Field(..., min_length=1)
+    category: str = Field(..., min_length=1)
+    severity: str = Field(default='medium')
+    description: str = ''
+    policy_kind: str = 'regex'
+    enabled: bool = True
+    source: str = 'manual'
+    patterns: list[SafetyPolicyPatternInput] = Field(default_factory=list)
+    hub_validators: list[SafetyHubValidatorInput] = Field(default_factory=list)
+
+
+class SafetyHubPolicyImport(BaseModel):
+    name: str = Field(..., min_length=1)
+    category: str = Field(default='guardrails_hub')
+    severity: str = Field(default='medium')
+    description: str = ''
+    source: str = 'guardrails_hub'
+    hub_validator: SafetyHubValidatorInput
+
+
+class SafetyHubValidatorInstallRequest(BaseModel):
+    hub_uri: str = Field(..., min_length=1)
+    install_local_models: bool = False
+
+
+class SafetyPolicyUpdate(BaseModel):
+    name: str | None = None
+    category: str | None = None
+    severity: str | None = None
+    description: str | None = None
+    policy_kind: str | None = None
+    enabled: bool | None = None
+    status: str | None = None
+    patterns: list[SafetyPolicyPatternInput] | None = None
+    hub_validators: list[SafetyHubValidatorInput] | None = None
+
+
+class PolicyActionRequest(BaseModel):
+    actor: str = 'ui'
+
+
+class PolicyTestRequest(BaseModel):
+    message: str = Field(..., min_length=1)

@@ -1,12 +1,26 @@
 import json
 import uuid
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.database import append_audit_event, engine, get_policy_payload, get_recent_audit_events, init_database
-from app.schemas import ChatRequest, ChatResponse, ResponsibleAIResponse, MetadataResponse, AuditEvent, PolicyResponse
+from app.guardrails_hub_catalog import install_hub_validator, list_hub_validators
+from app.schemas import (
+    AuditEvent,
+    ChatRequest,
+    ChatResponse,
+    MetadataResponse,
+    PolicyActionRequest,
+    PolicyResponse,
+    PolicyTestRequest,
+    ResponsibleAIResponse,
+    SafetyHubValidatorInstallRequest,
+    SafetyPolicyCreate,
+    SafetyHubPolicyImport,
+    SafetyPolicyUpdate,
+)
 from app.groq_client import groq_client
 from app.responsible_ai import (
     evaluate_privacy as code_privacy,
@@ -25,6 +39,15 @@ from app.framework_mode import (
     evaluate_safety as framework_safety,
     evaluate_explainability as framework_explainability,
     evaluate_fairness as framework_fairness
+)
+from app.framework_mode.guardrails_safety import reload_safety_policies, test_safety_policy
+from app.policy_governance import (
+    activate_policy,
+    approve_policy,
+    create_policy,
+    delete_policy,
+    list_policies,
+    update_policy,
 )
 from app.telemetry import get_tracing_status, instrument_sqlalchemy, setup_tracing, tracer
 
@@ -46,6 +69,7 @@ def startup_event():
     setup_tracing(app)
     instrument_sqlalchemy(engine)
     init_database()
+    reload_safety_policies()
 
 
 @app.get('/health')
@@ -75,7 +99,7 @@ def observability():
 
 @app.post('/chat', response_model=ChatResponse)
 def chat(request: ChatRequest):
-    with tracer.start_as_current_span('/chat') as span:
+    with tracer.start_as_current_span('chat.request') as span:
         span.set_attribute('chat.mode', request.mode.value)
         span.set_attribute('chat.model', request.model)
         span.set_attribute('chat.temperature', request.temperature)
@@ -272,3 +296,92 @@ def audit():
 @app.get('/policy', response_model=PolicyResponse)
 def policy():
     return PolicyResponse(policy=get_policy_payload())
+
+
+@app.get('/policies')
+def policies():
+    return {'policies': list_policies()}
+
+
+@app.post('/policies')
+def policies_create(request: SafetyPolicyCreate):
+    return {'policy': create_policy(request.dict())}
+
+
+@app.post('/policies/import/hub')
+def policies_import_hub(request: SafetyHubPolicyImport):
+    return {
+        'policy': create_policy(
+            {
+                'name': request.name,
+                'category': request.category,
+                'severity': request.severity,
+                'description': request.description,
+                'policy_kind': 'guardrails_hub',
+                'enabled': True,
+                'source': request.source or 'guardrails_hub',
+                'hub_validators': [request.hub_validator.dict()],
+            },
+            actor='hub-import',
+        )
+    }
+
+
+@app.get('/policies/hub/validators')
+def policies_hub_validators():
+    return {'validators': list_hub_validators()}
+
+
+@app.post('/policies/hub/validators/install')
+def policies_hub_validators_install(request: SafetyHubValidatorInstallRequest):
+    return install_hub_validator(request.hub_uri, request.install_local_models)
+
+
+@app.put('/policies/{policy_id}')
+def policies_update(policy_id: int, request: SafetyPolicyUpdate):
+    try:
+        policy = update_policy(policy_id, request.dict(exclude_none=True))
+        reload_safety_policies()
+        return {'policy': policy}
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete('/policies/{policy_id}')
+def policies_delete(policy_id: int):
+    try:
+        result = delete_policy(policy_id)
+        reload_safety_policies()
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post('/policies/{policy_id}/approve')
+def policies_approve(policy_id: int, request: PolicyActionRequest):
+    try:
+        return {'policy': approve_policy(policy_id, request.actor)}
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post('/policies/{policy_id}/activate')
+def policies_activate(policy_id: int, request: PolicyActionRequest):
+    try:
+        result = activate_policy(policy_id, request.actor)
+        reload_safety_policies()
+        return {'policy': result}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post('/policies/reload')
+def policies_reload():
+    return reload_safety_policies()
+
+
+@app.post('/policies/test')
+def policies_test(request: PolicyTestRequest):
+    return test_safety_policy(request.message)

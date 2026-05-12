@@ -21,6 +21,10 @@ class Settings:
     JAEGER_PORT = int(os.getenv('JAEGER_PORT', '6831'))
     JAEGER_ENDPOINT = os.getenv('JAEGER_ENDPOINT', '')
     JAEGER_UI_URL = os.getenv('JAEGER_UI_URL', 'http://localhost:16686')
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = os.getenv(
+        'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+        f'http://{JAEGER_HOST}:4318/v1/traces'
+    )
     DATABASE_URL = os.getenv('DATABASE_URL', f"sqlite:///{BASE_DIR / 'storage' / 'responsible_ai.db'}")
     FRONTEND_ORIGINS = [
         'http://localhost:5173',

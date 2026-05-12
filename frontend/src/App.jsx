@@ -3,6 +3,7 @@ import ChatWindow from './components/ChatWindow'
 import ResponsibleAIPanel from './components/ResponsibleAIPanel'
 import SettingsPanel from './components/SettingsPanel'
 import TracingStatus from './components/TracingStatus'
+import PolicyManager from './components/PolicyManager'
 import { sendChat, fetchPolicy } from './api'
 
 const defaultSettings = {
@@ -58,6 +59,9 @@ export default function App() {
           <ResponsibleAIPanel policy={policy} />
         </aside>
       </main>
+      <section className="policy-manager-section">
+        <PolicyManager />
+      </section>
     </div>
   )
 }

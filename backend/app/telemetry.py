@@ -5,7 +5,7 @@ from app.config import Settings
 
 try:
     from opentelemetry import trace
-    from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.sdk.resources import Resource
@@ -14,7 +14,7 @@ try:
     _otel_available = True
 except ImportError:
     trace = None
-    JaegerExporter = None
+    OTLPSpanExporter = None
     FastAPIInstrumentor = None
     HTTPXClientInstrumentor = None
     Resource = None
@@ -32,8 +32,8 @@ except ImportError:
 _tracing_status = {
     'status': 'not_started',
     'service': Settings.OTEL_SERVICE_NAME,
-    'exporter': 'jaeger',
-    'endpoint': Settings.JAEGER_ENDPOINT or f'{Settings.JAEGER_HOST}:{Settings.JAEGER_PORT}',
+    'exporter': 'otlp_http_to_jaeger',
+    'endpoint': Settings.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
     'jaeger_ui': Settings.JAEGER_UI_URL,
     'sqlalchemy_instrumented': False
 }
@@ -60,11 +60,11 @@ def setup_tracing(app: FastAPI) -> dict:
         return _tracing_status
 
     if not _otel_available:
-        _tracing_status.update({'status': 'disabled', 'reason': 'OpenTelemetry packages are not installed'})
+        _tracing_status.update({'status': 'disabled', 'reason': 'OpenTelemetry OTLP exporter packages are not installed'})
         return _tracing_status
 
-    if not Settings.JAEGER_HOST and not Settings.JAEGER_ENDPOINT:
-        _tracing_status.update({'status': 'disabled', 'reason': 'JAEGER_HOST or JAEGER_ENDPOINT must be configured'})
+    if not Settings.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:
+        _tracing_status.update({'status': 'disabled', 'reason': 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT must be configured'})
         return _tracing_status
 
     resource = Resource.create({'service.name': Settings.OTEL_SERVICE_NAME})
@@ -74,16 +74,7 @@ def setup_tracing(app: FastAPI) -> dict:
     except Exception:
         pass
 
-    if Settings.JAEGER_ENDPOINT:
-        exporter = JaegerExporter(
-            collector_endpoint=Settings.JAEGER_ENDPOINT,
-            insecure=True
-        )
-    else:
-        exporter = JaegerExporter(
-            agent_host_name=Settings.JAEGER_HOST,
-            agent_port=Settings.JAEGER_PORT
-        )
+    exporter = OTLPSpanExporter(endpoint=Settings.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
 
     provider.add_span_processor(BatchSpanProcessor(exporter))
     FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
@@ -92,8 +83,8 @@ def setup_tracing(app: FastAPI) -> dict:
     _tracing_initialized = True
     _tracing_status.update({
         'status': 'enabled',
-        'exporter': 'jaeger',
-        'endpoint': Settings.JAEGER_ENDPOINT or f'{Settings.JAEGER_HOST}:{Settings.JAEGER_PORT}',
+        'exporter': 'otlp_http_to_jaeger',
+        'endpoint': Settings.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
         'jaeger_ui': Settings.JAEGER_UI_URL,
         'sqlalchemy_instrumented': False
     })

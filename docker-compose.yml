@@ -3,11 +3,14 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.57
     environment:
+      COLLECTOR_OTLP_ENABLED: 'true'
       COLLECTOR_ZIPKIN_HOST_PORT: ':9411'
     ports:
       - '16686:16686'
       - '6831:6831/udp'
       - '14268:14268'
+      - '4317:4317'
+      - '4318:4318'
 
   backend:
     image: python:3.12-slim
@@ -19,6 +22,7 @@ services:
       JAEGER_HOST: jaeger
       JAEGER_PORT: 6831
       JAEGER_UI_URL: http://localhost:16686
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
     command: bash -lc "pip install -r requirements.txt && python -m spacy download en_core_web_lg && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - '8000:8000'
